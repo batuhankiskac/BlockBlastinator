@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blok Danışmanı</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+<style>
+/* Layout: tek sütunlu araç — üstte ekran görüntüsü, altında hamleler, en altta düzeltme ve ayar */
+:root{
+  --bg:#eef1f8; --surface:#ffffff; --ink:#1b2440; --muted:#5d6788; --line:#d5dbea;
+  --accent:#3b5bdb; --accent-ink:#ffffff;
+  --cell-empty:#dfe4f1; --cell-fill:#7684b3;
+  --s1:#f59f00; --s2:#15aabf; --s3:#e64980; --clear:#2f9e44; --warn:#c92a2a;
+  --display:"Baloo 2","Trebuchet MS",sans-serif; --body:"Nunito Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10142a; --surface:#1a2040; --ink:#e8ecfb; --muted:#9aa4c8; --line:#2c345e;
+  --accent:#7c94ff; --accent-ink:#0d1130; --cell-empty:#252c52; --cell-fill:#8391c4;
+  --clear:#51cf66; --warn:#ff8787; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#10142a; --surface:#1a2040; --ink:#e8ecfb; --muted:#9aa4c8; --line:#2c345e;
+  --accent:#7c94ff; --accent-ink:#0d1130; --cell-empty:#252c52; --cell-fill:#8391c4;
+  --clear:#51cf66; --warn:#ff8787; color-scheme:dark }
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+main{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+h1,h2{font-family:var(--display);margin:0;line-height:1.1;text-wrap:balance}
+h1{font-size:2rem;font-weight:800}
+h2{font-size:1.25rem;font-weight:600}
+p{margin:0}
+.lead{color:var(--muted);max-width:60ch}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,.btn{font:inherit;font-weight:700;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 14px;cursor:pointer}
+button:focus-visible,.btn:focus-within,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn input{position:absolute;opacity:0;width:1px;height:1px}
+#shot{width:100%;max-width:100%;display:block;border-radius:10px;touch-action:none;background:var(--cell-empty)}
+.hint{font-size:.85rem;color:var(--muted)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--cell-empty);color:var(--muted)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.step{display:flex;flex-direction:column;gap:8px;min-width:0}
+.step-h{display:flex;align-items:center;gap:8px;font-weight:700}
+.num{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-family:var(--display);font-weight:800;flex:none}
+.grid8{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;width:100%;max-width:100%;aspect-ratio:1}
+.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;width:100%;aspect-ratio:1}
+.c{border-radius:3px;background:var(--cell-empty);border:0;padding:0;min-width:0}
+.c.on{background:var(--cell-fill)}
+.c.clr{box-shadow:inset 0 0 0 2px var(--clear)}
+button.c{cursor:pointer}
+.status{font-weight:600}
+.status.bad{color:var(--warn)}
+.edit{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:start}
+.pieces{display:grid;grid-template-columns:1fr;gap:10px}
+.piece{display:flex;flex-direction:column;gap:4px}
+@media (max-width:520px){.edit{grid-template-columns:1fr}.pieces{grid-template-columns:repeat(3,1fr)}}
+label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.9rem;min-width:0;flex:1 1 200px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px}
+</style>
+</head>
+<body>
+
+<main>
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <h1>Blok Danışmanı</h1>
+    <p class="lead">Oyundan ekran görüntüsü al, buraya yükle. Tahtayı ve alttaki üç parçayı okuyup en iyi yerleştirme sırasını gösterir.</p>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <label class="btn primary" style="flex:none;position:relative">Ekran görüntüsü seç
+        <input type="file" id="file" accept="image/*">
+      </label>
+      <span class="hint" id="imgHint">Henüz görüntü yok. Aşağıda örnek bir tahta çözülüyor.</span>
+    </div>
+    <canvas id="shot" width="600" height="300" aria-label="Ekran görüntüsü ve önerilen hamleler"></canvas>
+    <div class="row">
+      <button id="calBoard" type="button">Tahtayı işaretle</button>
+      <button id="calTray" type="button">Parça alanını işaretle</button>
+      <span class="hint" id="calHint">Kutular yanlış yerdeyse: düğmeye bas, sonra görüntü üzerinde parmağınla kutuyu çiz.</span>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:10px">
+    <div class="row" style="justify-content:space-between">
+      <h2>Hamleler</h2><span class="tag" id="exTag">Örnek</span>
+    </div>
+    <p class="status" id="status"></p>
+    <div class="steps" id="steps"></div>
+  </section>
+
+  <section class="card">
+    <h2>Okunanı düzelt</h2>
+    <p class="hint">Bot bir hücreyi yanlış okuduysa üzerine dokun. Değişiklikten sonra çözüm hemen yenilenir.</p>
+    <div class="edit">
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><strong>Tahta</strong><div class="grid8" id="boardEd"></div></div>
+      <div class="pieces" id="pieceEd"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Okuma ayarları</h2>
+    <div class="row">
+      <label for="thr">Renk farkı eşiği: <span id="thrV"></span>
+        <input type="range" id="thr" min="15" max="160" step="1"></label>
+      <label for="ratio">Parça bloğu / tahta hücresi oranı: <span id="ratioV"></span>
+        <input type="range" id="ratio" min="0.3" max="1" step="0.01"></label>
+    </div>
+    <div class="row"><button type="button" id="reset">Ayarları sıfırla</button></div>
+    <ol class="hint">
+      <li>Boş hücre dolu görünüyorsa eşiği artır, dolu hücre boş görünüyorsa azalt.</li>
+      <li>Parçalar fazla büyük ya da küçük bir ızgara olarak okunuyorsa oranı değiştir. Alttaki parçalar tahtadakinden küçük çizildiği için oran genelde 0,5 civarındadır.</li>
+      <li>Ayarlar bu tarayıcıda saklanır. Bir kere ayarladıktan sonra sadece görüntü yüklemen yeter.</li>
+    </ol>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d } catch { return d } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
+};
+const DEFAULT_CAL = { board: { x0: .05, y0: .30, x1: .95, y1: .715 }, tray: { x0: .03, y0: .74, x1: .97, y1: .88 }, thr: 60, ratio: .5 };
+let cal = JSON.parse(JSON.stringify(Object.assign({}, DEFAULT_CAL, store.get('bb-cal', {}))));
+const STEP_COLORS = ['--s1', '--s2', '--s3'].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+
+const state = { board: new Array(64).fill(0), pieces: [null, null, null], img: null, data: null, result: null, example: true, calMode: null, drag: null };
+
+// ---------- örnek tahta ----------
+(function example() {
+  const rows = ['........', '........', '..##....', '.###...#', '####..##', '#####.##', '######.#', '#######.'];
+  rows.forEach((s, r) => [...s].forEach((ch, c) => state.board[r * 8 + c] = ch === '#' ? 1 : 0));
+  state.pieces = [[[0, 0], [1, 0], [2, 0], [2, 1]], [[0, 0], [1, 0]], [[0, 0], [0, 1], [1, 0], [1, 1]]];
+})();
+
+// ---------- görüntü okuma ----------
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const lum = x => x[0] * .3 + x[1] * .59 + x[2] * .11;
+function avg(x, y, r) {
+  const { data, width, height } = state.data;
+  const x0 = Math.max(0, Math.round(x - r)), x1 = Math.min(width - 1, Math.round(x + r));
+  const y0 = Math.max(0, Math.round(y - r)), y1 = Math.min(height - 1, Math.round(y + r));
+  const st = Math.max(1, Math.floor(r / 4));
+  let R = 0, G = 0, B = 0, n = 0;
+  for (let yy = y0; yy <= y1; yy += st) for (let xx = x0; xx <= x1; xx += st) {
+    const i = (yy * width + xx) * 4; R += data[i]; G += data[i + 1]; B += data[i + 2]; n++;
+  }
+  return n ? [R / n, G / n, B / n] : [0, 0, 0];
+}
+function normalize(cells) {
+  const mr = Math.min(...cells.map(c => c[0])), mc = Math.min(...cells.map(c => c[1]));
+  return cells.map(([r, c]) => [r - mr, c - mc]);
+}
+function boardGeom() {
+  const W = state.data.width, H = state.data.height, b = cal.board;
+  return { x0: b.x0 * W, y0: b.y0 * H, cw: (b.x1 - b.x0) * W / 8, ch: (b.y1 - b.y0) * H / 8 };
+}
+function analyze() {
+  if (!state.data) return;
+  const g = boardGeom();
+  const cols = [];
+  for (let i = 0; i < 64; i++) cols.push(avg(g.x0 + ((i & 7) + .5) * g.cw, g.y0 + ((i >> 3) + .5) * g.ch, Math.min(g.cw, g.ch) * .18));
+  // Boş hücreler koyu ve birbirine benzer: en koyu hücre "boş" referansı olur.
+  const ref = cols.reduce((a, x) => lum(x) < lum(a) ? x : a);
+  state.board = cols.map(x => dist(x, ref) > cal.thr ? 1 : 0);
+  const W = state.data.width, H = state.data.height, t = cal.tray;
+  const sw = (t.x1 - t.x0) * W / 3, th = (t.y1 - t.y0) * H;
+  const pc = Math.min(g.cw, g.ch) * cal.ratio;
+  for (let s = 0; s < 3; s++) state.pieces[s] = detectPiece(t.x0 * W + s * sw, t.y0 * H, sw, th, pc);
+}
+function detectPiece(x, y, w, h, pc) {
+  const k = Math.max(2, Math.round(Math.min(w, h) * .04));
+  const cs = [avg(x + k, y + k, k), avg(x + w - k, y + k, k), avg(x + k, y + h - k, k), avg(x + w - k, y + h - k, k)];
+  const bg = [0, 1, 2].map(j => cs.reduce((a, c) => a + c[j], 0) / 4);
+  const { data, width } = state.data;
+  const st = Math.max(1, Math.round(pc / 10));
+  let minx = 1e9, miny = 1e9, maxx = -1, maxy = -1, cnt = 0;
+  for (let yy = Math.round(y); yy < y + h; yy += st) for (let xx = Math.round(x); xx < x + w; xx += st) {
+    const i = (yy * width + xx) * 4;
+    if (dist([data[i], data[i + 1], data[i + 2]], bg) > cal.thr) {
+      cnt++; if (xx < minx) minx = xx; if (xx > maxx) maxx = xx; if (yy < miny) miny = yy; if (yy > maxy) maxy = yy;
+    }
+  }
+  if (cnt * st * st < pc * pc * .5) return null;
+  const bw = maxx - minx + st, bh = maxy - miny + st;
+  const nc = Math.min(5, Math.max(1, Math.round(bw / pc))), nr = Math.min(5, Math.max(1, Math.round(bh / pc)));
+  const cw = bw / nc, chh = bh / nr, cells = [];
+  for (let r = 0; r < nr; r++) for (let c = 0; c < nc; c++)
+    if (dist(avg(minx + (c + .5) * cw, miny + (r + .5) * chh, Math.min(cw, chh) * .2), bg) > cal.thr) cells.push([r, c]);
+  return cells.length ? normalize(cells) : null;
+}
+
+// ---------- çözücü (64 bit tahta = iki 32 bitlik sayı) ----------
+function maskOf(idx) {
+  let lo = 0, hi = 0;
+  for (const i of idx) { if (i < 32) lo |= 1 << i; else hi |= 1 << (i - 32) }
+  return [lo >>> 0, hi >>> 0];
+}
+const LINES = [];
+for (let r = 0; r < 8; r++) { const idx = [0, 1, 2, 3, 4, 5, 6, 7].map(c => r * 8 + c); const [lo, hi] = maskOf(idx); LINES.push({ lo, hi, idx, name: `${r + 1}. satır` }) }
+for (let c = 0; c < 8; c++) { const idx = [0, 1, 2, 3, 4, 5, 6, 7].map(r => r * 8 + c); const [lo, hi] = maskOf(idx); LINES.push({ lo, hi, idx, name: `${c + 1}. sütun` }) }
+function placements(cells) {
+  const h = Math.max(...cells.map(c => c[0])) + 1, w = Math.max(...cells.map(c => c[1])) + 1, out = [];
+  for (let r = 0; r <= 8 - h; r++) for (let c = 0; c <= 8 - w; c++) {
+    const idx = cells.map(([dr, dc]) => (r + dr) * 8 + c + dc);
+    const [lo, hi] = maskOf(idx);
+    out.push({ r, c, lo, hi, idx });
+  }
+  return out;
+}
+const rect = (h, w) => { const a = []; for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) a.push([r, c]); return a };
+// Gelecekte gelmesi muhtemel zor parçalar: hâlâ sığıyorlarsa tahta sağlıklıdır.
+const BIG = [[placements(rect(3, 3)), 12], [placements(rect(1, 5)), 6], [placements(rect(5, 1)), 6], [placements(rect(2, 3)), 3], [placements(rect(3, 2)), 3]];
+const evalCache = new Map();
+function evalBoard(lo, hi) {
+  const key = lo + ',' + hi;
+  const hit = evalCache.get(key); if (hit !== undefined) return hit;
+  const a = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) a[i] = i < 32 ? (lo >>> i) & 1 : (hi >>> (i - 32)) & 1;
+  let filled = 0, holes = 0, trans = 0;
+  for (let i = 0; i < 64; i++) {
+    if (a[i]) { filled++; continue }
+    const r = i >> 3, c = i & 7;
+    if ((r === 0 || a[i - 8]) && (r === 7 || a[i + 8]) && (c === 0 || a[i - 1]) && (c === 7 || a[i + 1])) holes++;
+  }
+  for (let r = 0; r < 8; r++) { let p = 1; for (let c = 0; c < 8; c++) { const v = a[r * 8 + c]; if (v !== p) trans++; p = v } if (p !== 1) trans++ }
+  for (let c = 0; c < 8; c++) { let p = 1; for (let r = 0; r < 8; r++) { const v = a[r * 8 + c]; if (v !== p) trans++; p = v } if (p !== 1) trans++ }
+  let fits = 0;
+  for (const [pls, w] of BIG) for (const p of pls) if (!(lo & p.lo) && !(hi & p.hi)) { fits += w; break }
+  const s = -2 * filled - 8 * holes - trans + fits;
+  if (evalCache.size > 400000) evalCache.clear();
+  evalCache.set(key, s);
+  return s;
+}
+function solve(board, pieces) {
+  const P = pieces.map(p => p && p.length ? placements(p) : null);
+  const [lo0, hi0] = maskOf(board.map((v, i) => v ? i : -1).filter(i => i >= 0));
+  let rem0 = 0; P.forEach((p, i) => { if (p) rem0 |= 1 << i });
+  let best = { score: -Infinity, moves: [], unplaced: 0 };
+  const seen = new Set(), path = [];
+  (function rec(lo, hi, rem, acc) {
+    let any = false;
+    for (let i = 0; i < 3; i++) {
+      if (!(rem & (1 << i))) continue;
+      for (const pl of P[i]) {
+        if ((lo & pl.lo) || (hi & pl.hi)) continue;
+        any = true;
+        let nl = (lo | pl.lo) >>> 0, nh = (hi | pl.hi) >>> 0, cl = 0, ch = 0;
+        const clr = [];
+        for (let li = 0; li < 16; li++) {
+          const L = LINES[li];
+          if (((nl & L.lo) >>> 0) === L.lo && ((nh & L.hi) >>> 0) === L.hi) { clr.push(li); cl |= L.lo; ch |= L.hi }
+        }
+        nl = (nl & ~cl) >>> 0; nh = (nh & ~ch) >>> 0;
+        const n = clr.length, gain = n ? 20 * n + 10 * n * (n - 1) : 0, nrem = rem & ~(1 << i);
+        if (nrem) { const key = nl + ',' + nh + ',' + nrem + ',' + (acc + gain); if (seen.has(key)) continue; seen.add(key) }
+        path.push({ piece: i, r: pl.r, c: pl.c, idx: pl.idx, cleared: clr, before: [lo, hi] });
+        rec(nl, nh, nrem, acc + gain);
+        path.pop();
+      }
+    }
+    if (!any) {
+      let unplaced = 0; for (let i = 0; i < 3; i++) if (rem & (1 << i)) unplaced++;
+      const s = acc + evalBoard(lo, hi) - 1000 * unplaced;
+      if (s > best.score) best = { score: s, moves: path.slice(), unplaced };
+    }
+  })(lo0, hi0, rem0, 0);
+  return best;
+}
+
+// ---------- çizim ----------
+const cv = $('#shot'), ctx = cv.getContext('2d');
+function drawCanvas() {
+  const dpr = window.devicePixelRatio || 1, cssW = cv.clientWidth || 600;
+  if (!state.img) {
+    cv.width = cssW * dpr; cv.height = cssW * .35 * dpr; cv.style.height = cssW * .35 + 'px';
+    ctx.fillStyle = getComputedStyle(document.body).color; ctx.globalAlpha = .55;
+    ctx.font = `${15 * dpr}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = 'center';
+    ctx.fillText('Oyundan aldığın ekran görüntüsü burada görünecek', cv.width / 2, cv.height / 2); ctx.globalAlpha = 1;
+    return;
+  }
+  const W = state.img.naturalWidth, H = state.img.naturalHeight;
+  const maxH = window.innerHeight * .75, scale = Math.min(cssW / W, maxH / H);
+  const dw = W * scale, dh = H * scale;
+  cv.style.width = dw + 'px'; cv.style.height = dh + 'px';
+  cv.width = dw * dpr; cv.height = dh * dpr;
+  const k = dw * dpr / W;
+  ctx.drawImage(state.img, 0, 0, cv.width, cv.height);
+  const R = f => [f.x0 * cv.width, f.y0 * cv.height, (f.x1 - f.x0) * cv.width, (f.y1 - f.y0) * cv.height];
+  const [bx, by, bw, bh] = R(cal.board), [tx, ty, tw, th] = R(cal.tray);
+  ctx.lineWidth = 2 * dpr; ctx.strokeStyle = '#ffffffcc'; ctx.setLineDash([6 * dpr, 4 * dpr]);
+  ctx.strokeRect(bx, by, bw, bh); ctx.strokeRect(tx, ty, tw, th);
+  ctx.beginPath(); for (let s = 1; s < 3; s++) { ctx.moveTo(tx + tw * s / 3, ty); ctx.lineTo(tx + tw * s / 3, ty + th) } ctx.stroke();
+  ctx.setLineDash([]);
+  const cw = bw / 8, ch = bh / 8;
+  // okunan dolu hücreler: küçük nokta
+  ctx.fillStyle = '#ffffffdd';
+  state.board.forEach((v, i) => { if (v) { ctx.beginPath(); ctx.arc(bx + ((i & 7) + .5) * cw, by + ((i >> 3) + .5) * ch, Math.min(cw, ch) * .1, 0, 7); ctx.fill() } });
+  const res = state.result;
+  if (res) res.moves.forEach((m, si) => {
+    ctx.fillStyle = STEP_COLORS[si] + 'cc'; ctx.strokeStyle = '#fff';
+    m.idx.forEach(i => { const x = bx + (i & 7) * cw, y = by + (i >> 3) * ch; ctx.fillRect(x + 2, y + 2, cw - 4, ch - 4); ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4) });
+    const i0 = m.idx[0];
+    label(bx + ((i0 & 7) + .5) * cw, by + ((i0 >> 3) + .5) * ch, si, Math.min(cw, ch) * .32);
+    label(tx + tw * (m.piece + .5) / 3, ty + th * .12, si, Math.min(cw, ch) * .32);
+  });
+  if (state.drag) { const d = state.drag; ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 3 * dpr; ctx.strokeRect(...R(d)) }
+  function label(x, y, si, r) {
+    ctx.fillStyle = STEP_COLORS[si]; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.lineWidth = 2 * dpr; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `800 ${r * 1.3}px "Baloo 2", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(si + 1, x, y + r * .08);
+  }
+}
+function miniBoard(cellsOn, extra) {
+  const g = document.createElement('div'); g.className = 'grid8';
+  for (let i = 0; i < 64; i++) {
+    const d = document.createElement('div'); d.className = 'c' + (cellsOn[i] ? ' on' : '');
+    extra && extra(d, i); g.appendChild(d);
+  }
+  return g;
+}
+const SLOT = ['soldaki', 'ortadaki', 'sağdaki'];
+function renderSteps(msg) {
+  const box = $('#steps'), st = $('#status'); box.innerHTML = ''; st.className = 'status';
+  $('#exTag').hidden = !state.example;
+  if (msg) { st.textContent = msg; return }
+  const res = state.result;
+  if (!res || !state.pieces.some(Boolean)) { st.textContent = 'Parça bulunamadı. Parça alanını işaretle ya da parçaları aşağıdan elle çiz.'; return }
+  const total = res.moves.reduce((a, m) => a + m.cleared.length, 0);
+  st.textContent = res.unplaced
+    ? `Dikkat: ${res.unplaced} parça hiçbir sırayla sığmıyor. En çok parçayı yerleştiren sıra gösteriliyor.`
+    : `Bu sırayla oyna. Toplam ${total} satır/sütun temizlenir. (${state.ms} ms)`;
+  if (res.unplaced) st.className = 'status bad';
+  res.moves.forEach((m, si) => {
+    const [lo, hi] = m.before, on = [];
+    for (let i = 0; i < 64; i++) on.push(i < 32 ? (lo >>> i) & 1 : (hi >>> (i - 32)) & 1);
+    const clrCells = new Set(m.cleared.flatMap(li => LINES[li].idx)), mine = new Set(m.idx);
+    const card = document.createElement('div'); card.className = 'card step';
+    const h = document.createElement('div'); h.className = 'step-h';
+    h.innerHTML = `<span class="num" style="background:${STEP_COLORS[si]}">${si + 1}</span><span>${SLOT[m.piece]} parça</span>`;
+    card.appendChild(h);
+    card.appendChild(miniBoard(on, (d, i) => {
+      if (mine.has(i)) d.style.background = STEP_COLORS[si];
+      if (clrCells.has(i)) d.classList.add('clr');
+    }));
+    const p = document.createElement('p'); p.className = 'hint';
+    p.textContent = m.cleared.length ? `Temizlenir: ${m.cleared.map(li => LINES[li].name).join(', ')}` : 'Temizleme yok';
+    card.appendChild(p); box.appendChild(card);
+  });
+}
+function renderEditors() {
+  const be = $('#boardEd'); be.innerHTML = '';
+  state.board.forEach((v, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'c' + (v ? ' on' : '');
+    b.setAttribute('aria-label', `Satır ${(i >> 3) + 1}, sütun ${(i & 7) + 1}: ${v ? 'dolu' : 'boş'}`);
+    b.onclick = () => { state.board[i] ^= 1; runSolve() };
+    be.appendChild(b);
+  });
+  const pe = $('#pieceEd'); pe.innerHTML = '';
+  state.pieces.forEach((p, s) => {
+    const wrap = document.createElement('div'); wrap.className = 'piece';
+    wrap.innerHTML = `<strong style="font-size:.85rem">${SLOT[s][0].toUpperCase() + SLOT[s].slice(1)}</strong>`;
+    const g = document.createElement('div'); g.className = 'grid5';
+    const set = new Set((p || []).map(([r, c]) => r * 5 + c));
+    for (let i = 0; i < 25; i++) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'c' + (set.has(i) ? ' on' : '');
+      b.setAttribute('aria-label', `${SLOT[s]} parça, satır ${Math.floor(i / 5) + 1}, sütun ${i % 5 + 1}`);
+      b.onclick = () => {
+        set.has(i) ? set.delete(i) : set.add(i);
+        state.pieces[s] = set.size ? normalize([...set].map(k => [Math.floor(k / 5), k % 5])) : null;
+        runSolve();
+      };
+      g.appendChild(b);
+    }
+    wrap.appendChild(g); pe.appendChild(wrap);
+  });
+}
+function runSolve() {
+  state.result = null; renderSteps('Hesaplanıyor…'); renderEditors(); drawCanvas();
+  setTimeout(() => {
+    const t = performance.now();
+    state.result = solve(state.board, state.pieces);
+    state.ms = Math.round(performance.now() - t);
+    renderSteps(); drawCanvas();
+  }, 20);
+}
+
+// ---------- görüntü yükleme ----------
+function loadImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => setImage(img);
+  img.src = url;
+}
+function setImage(img) {
+  const oc = document.createElement('canvas'); oc.width = img.naturalWidth; oc.height = img.naturalHeight;
+  const octx = oc.getContext('2d', { willReadFrequently: true }); octx.drawImage(img, 0, 0);
+  state.img = img; state.data = octx.getImageData(0, 0, oc.width, oc.height); state.example = false;
+  $('#imgHint').textContent = `${img.naturalWidth}×${img.naturalHeight} görüntü okundu.`;
+  analyze(); runSolve();
+}
+$('#file').addEventListener('change', e => loadImageFile(e.target.files[0]));
+document.addEventListener('paste', e => { const f = [...(e.clipboardData?.files || [])][0]; if (f) loadImageFile(f) });
+
+// ---------- kalibrasyon ----------
+function setMode(m) {
+  state.calMode = state.calMode === m ? null : m;
+  $('#calBoard').classList.toggle('active', state.calMode === 'board');
+  $('#calTray').classList.toggle('active', state.calMode === 'tray');
+  $('#calHint').textContent = state.calMode
+    ? (state.calMode === 'board' ? 'Görüntüde 8×8 tahtanın dış kenarını kapsayan kutuyu çiz.' : 'Alttaki üç parçanın durduğu bandı çiz (soldan sağa tam genişlik).')
+    : 'Kutular yanlış yerdeyse: düğmeye bas, sonra görüntü üzerinde parmağınla kutuyu çiz.';
+}
+$('#calBoard').onclick = () => setMode('board');
+$('#calTray').onclick = () => setMode('tray');
+const frac = e => { const r = cv.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))] };
+cv.addEventListener('pointerdown', e => {
+  if (!state.calMode || !state.img) return;
+  cv.setPointerCapture(e.pointerId); const [x, y] = frac(e); state.drag = { sx: x, sy: y, x0: x, y0: y, x1: x, y1: y };
+});
+cv.addEventListener('pointermove', e => {
+  if (!state.drag) return; const d = state.drag, [x, y] = frac(e);
+  Object.assign(d, { x0: Math.min(d.sx, x), x1: Math.max(d.sx, x), y0: Math.min(d.sy, y), y1: Math.max(d.sy, y) }); drawCanvas();
+});
+cv.addEventListener('pointerup', () => {
+  const d = state.drag; state.drag = null; if (!d) return;
+  if (d.x1 - d.x0 > .03 && d.y1 - d.y0 > .02) { cal[state.calMode] = { x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 }; saveCal(); setMode(state.calMode); analyze(); runSolve() }
+  else drawCanvas();
+});
+function saveCal() { store.set('bb-cal', cal) }
+function syncSliders() {
+  $('#thr').value = cal.thr; $('#thrV').textContent = cal.thr;
+  $('#ratio').value = cal.ratio; $('#ratioV').textContent = (+cal.ratio).toFixed(2).replace('.', ',');
+}
+let sliderT;
+$('#thr').oninput = e => { cal.thr = +e.target.value; syncSliders(); saveCal(); clearTimeout(sliderT); sliderT = setTimeout(() => { analyze(); runSolve() }, 150) };
+$('#ratio').oninput = e => { cal.ratio = +e.target.value; syncSliders(); saveCal(); clearTimeout(sliderT); sliderT = setTimeout(() => { analyze(); runSolve() }, 150) };
+$('#reset').onclick = () => { cal = JSON.parse(JSON.stringify(DEFAULT_CAL)); saveCal(); syncSliders(); analyze(); runSolve() };
+window.addEventListener('resize', () => drawCanvas());
+
+window.__bb = { state, cal, solve, setImage, analyze };
+syncSliders(); runSolve();
+</script>
+</body>
+</html>
